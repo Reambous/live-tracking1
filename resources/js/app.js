@@ -13,14 +13,15 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 18,
 }).addTo(map);
 
-const trainMarkers = {};
 let allTrains = [];
 let currentRoute = 'all';
 let simulatedMinutes = 8 * 60;
 let speedMultiplier = 5;
-let isSimulationRunning = true;
 let simulationInterval = null;
-let lastFetchTime = Date.now();
+
+const trainMarkers = {};
+const trainPolylines = {};
+const animState = {};
 
 const timeSlider = document.getElementById('timeSlider');
 const digitalClock = document.getElementById('digitalClock');
@@ -72,6 +73,12 @@ const routeLabels = {
     selatan: 'Jalur Selatan',
 };
 
+const routeColors = {
+    utara: '#3b82f6',
+    tengah: '#8b5cf6',
+    selatan: '#10b981',
+};
+
 function updateStats(trains) {
     const stopped = trains.filter(t => t.status === 'stopped').length;
     const approaching = trains.filter(t => t.status === 'approaching').length;
@@ -94,8 +101,8 @@ function renderTrainCards(trains) {
 
     let html = '';
     for (const train of trains) {
-        const statusCls = train.status === 'stopped' ? 'stopped' : train.status === 'approaching' ? 'approaching' : 'departing';
-        const routeCls = train.route === 'utara' ? 'utara' : train.route === 'selatan' ? 'selatan' : 'tengah';
+        const statusCls = train.status;
+        const routeCls = train.route || 'tengah';
 
         html += `
             <div class="train-card" data-train-id="${train.id}">
@@ -110,25 +117,62 @@ function renderTrainCards(trains) {
                     </div>
                 </div>
                 <div class="train-card-route">
-                    <span class="route-badge ${routeCls}">${routeLabels[train.route || 'tengah']}</span>
+                    <span class="route-badge ${routeCls}">${routeLabels[routeCls]}</span>
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width:${train.progress}%"></div>
                 </div>
                 <div class="train-card-meta">
                     <span>Progress <span class="meta-value">${train.progress}%</span></span>
-                    <span>⏱ ${train.speed} km/h</span>
-                    <span>📡 ${train.gps_accuracy}%</span>
+                    <span>⏱ <span class="meta-value">${train.speed}</span> km/h</span>
+                    <span>📡 <span class="meta-value">${train.gps_accuracy}</span>%</span>
                 </div>
                 <div class="train-card-meta" style="margin-top:4px;padding-top:4px;border-top:1px solid #334155;">
                     <span>${train.prev_station || '-'}</span>
-                    <span>→</span>
+                    <span style="color:#475569;">→</span>
                     <span><strong style="color:#f1f5f9;">${train.next_station || '-'}</strong> ${train.next_arrival ? '(' + formatTime(train.next_arrival) + ')' : ''}</span>
                 </div>
             </div>
         `;
     }
     trainListContainer.innerHTML = html;
+}
+
+function updateMapPolylines(trains) {
+    const activeIds = new Set(trains.map(t => t.id));
+
+    for (const [id, polyline] of Object.entries(trainPolylines)) {
+        if (!activeIds.has(Number(id))) {
+            map.removeLayer(polyline);
+            delete trainPolylines[id];
+        }
+    }
+
+    for (const train of trains) {
+        if (!train.path || train.path.length < 2) continue;
+
+        if (trainPolylines[train.id]) {
+            trainPolylines[train.id].setLatLngs(train.path);
+        } else {
+            const color = routeColors[train.route] || '#3b82f6';
+            const polyline = L.polyline(train.path, {
+                color: color,
+                weight: 2,
+                opacity: 0.25,
+                dashArray: null,
+                smoothFactor: 1,
+            }).addTo(map);
+            trainPolylines[train.id] = polyline;
+        }
+    }
+}
+
+function getTrainHeading(lat1, lng1, lat2, lng2) {
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+    return Math.atan2(y, x) * 180 / Math.PI;
 }
 
 function updateMapMarkers(trains) {
@@ -138,11 +182,12 @@ function updateMapMarkers(trains) {
         if (!activeIds.has(Number(id))) {
             map.removeLayer(marker);
             delete trainMarkers[id];
+            delete animState[id];
         }
     }
 
     for (const train of trains) {
-        const statusCls = train.status === 'stopped' ? 'stopped' : train.status === 'approaching' ? 'approaching' : 'departing';
+        const statusCls = train.status;
 
         const popupContent = `
             <div style="font-family:Inter,sans-serif;">
@@ -162,7 +207,14 @@ function updateMapMarkers(trains) {
 
         if (trainMarkers[train.id]) {
             const marker = trainMarkers[train.id];
-            marker.setLatLng([train.latitude, train.longitude]);
+
+            animState[train.id] = {
+                from: marker.getLatLng(),
+                to: L.latLng(train.latitude, train.longitude),
+                startTime: performance.now(),
+                duration: 4000,
+            };
+
             marker.setPopupContent(popupContent);
             marker.setIcon(createTrainIcon(train.status));
         } else {
@@ -170,8 +222,46 @@ function updateMapMarkers(trains) {
                 icon: createTrainIcon(train.status),
             }).addTo(map);
             marker.bindPopup(popupContent);
+
+            animState[train.id] = {
+                from: L.latLng(train.latitude, train.longitude),
+                to: L.latLng(train.latitude, train.longitude),
+                startTime: performance.now(),
+                duration: 4000,
+            };
+
             trainMarkers[train.id] = marker;
         }
+    }
+}
+
+function animateMarkers(now) {
+    let hasActive = false;
+
+    for (const [id, state] of Object.entries(animState)) {
+        const marker = trainMarkers[id];
+        if (!marker) {
+            delete animState[id];
+            continue;
+        }
+
+        const elapsed = now - state.startTime;
+        const t = Math.min(elapsed / state.duration, 1);
+
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+        const lat = state.from.lat + (state.to.lat - state.from.lat) * ease;
+        const lng = state.from.lng + (state.to.lng - state.from.lng) * ease;
+
+        marker.setLatLng([lat, lng]);
+
+        if (t < 1) {
+            hasActive = true;
+        }
+    }
+
+    if (hasActive) {
+        requestAnimationFrame(animateMarkers);
     }
 }
 
@@ -184,7 +274,9 @@ function updateUI() {
     const filtered = getFilteredTrains();
     updateStats(filtered);
     renderTrainCards(filtered);
+    updateMapPolylines(filtered);
     updateMapMarkers(filtered);
+    requestAnimationFrame(animateMarkers);
 }
 
 async function fetchActiveTrains() {
@@ -206,7 +298,7 @@ async function fetchActiveTrains() {
 function startSimulation() {
     if (simulationInterval) clearInterval(simulationInterval);
 
-    const intervalMs = Math.max(100, Math.round(5000 / speedMultiplier));
+    const intervalMs = Math.max(200, Math.round(5000 / speedMultiplier));
 
     simulationInterval = setInterval(() => {
         simulatedMinutes = (simulatedMinutes + 1) % 1440;
@@ -226,8 +318,6 @@ function stopSimulation() {
 timeSlider.addEventListener('input', function () {
     simulatedMinutes = parseInt(this.value);
     updateClock();
-    stopSimulation();
-    isSimulationRunning = false;
     fetchActiveTrains();
 });
 
@@ -236,9 +326,6 @@ speedBtns.forEach(btn => {
         speedBtns.forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         speedMultiplier = parseInt(this.dataset.speed);
-        if (!isSimulationRunning) {
-            isSimulationRunning = true;
-        }
         startSimulation();
     });
 });
@@ -258,8 +345,10 @@ trainListContainer.addEventListener('click', function (e) {
         const trainId = parseInt(card.dataset.trainId);
         const train = allTrains.find(t => t.id === trainId);
         if (train && trainMarkers[trainId]) {
-            map.setView([train.latitude, train.longitude], 12, { animate: true });
-            trainMarkers[trainId].openPopup();
+            map.setView([train.latitude, train.longitude], 11, { animate: true });
+            setTimeout(() => {
+                if (trainMarkers[trainId]) trainMarkers[trainId].openPopup();
+            }, 400);
         }
     }
 });

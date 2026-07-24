@@ -35,6 +35,7 @@ class TrainTrackingService
         $this->seedFromMockIfEmpty();
 
         $now = $simulatedTime ?? now()->format('H:i:s');
+        $nowSec = $this->timeToSec($now);
         $trains = Train::with(['schedules.station'])->get();
 
         $activeTrains = [];
@@ -53,7 +54,7 @@ class TrainTrackingService
                 continue;
             }
 
-            if ($now < $firstDeparture || $now > $lastArrival) {
+            if (!$this->isTimeInRange($nowSec, $firstDeparture, $lastArrival)) {
                 continue;
             }
 
@@ -80,6 +81,15 @@ class TrainTrackingService
 
             $gpsAccuracy = rand(85, 99);
 
+            $pathCoords = [];
+            foreach ($schedules as $s) {
+                $lat = (float) $s->station->latitude;
+                $lng = (float) $s->station->longitude;
+                if ($lat != 0 || $lng != 0) {
+                    $pathCoords[] = [$lat, $lng];
+                }
+            }
+
             $activeTrains[] = [
                 'id' => $train->id,
                 'train_code' => $train->train_code,
@@ -94,15 +104,35 @@ class TrainTrackingService
                 'prev_station' => $prevStation ? $prevStation['name'] : null,
                 'next_station' => $nextStation ? $nextStation['name'] : null,
                 'next_arrival' => $nextStation ? $nextStation['arrival_time'] : null,
+                'path' => $pathCoords,
             ];
         }
 
         return $activeTrains;
     }
 
+    private function timeToSec(string $time): int
+    {
+        $parts = explode(':', $time);
+        return (int) $parts[0] * 3600 + (int) ($parts[1] ?? 0) * 60 + (int) ($parts[2] ?? 0);
+    }
+
+    private function isTimeInRange(int $nowSec, string $startStr, string $endStr): bool
+    {
+        $startSec = $this->timeToSec($startStr);
+        $endSec = $this->timeToSec($endStr);
+
+        if ($endSec >= $startSec) {
+            return $nowSec >= $startSec && $nowSec <= $endSec;
+        }
+
+        return $nowSec >= $startSec || $nowSec <= $endSec;
+    }
+
     private function calculatePosition($schedules, string $now): ?array
     {
         $schedules = $schedules->values();
+        $nowSec = $this->timeToSec($now);
 
         for ($i = 0; $i < $schedules->count() - 1; $i++) {
             $current = $schedules[$i];
@@ -113,7 +143,12 @@ class TrainTrackingService
             $segmentStart = $currentDeparture;
             $segmentEnd = $next->arrival_time;
 
-            if ($currentArrival && $currentDeparture && $now >= $currentArrival && $now < $currentDeparture) {
+            if ($currentArrival && $currentDeparture && $this->isTimeInRange($nowSec, $currentArrival, $currentDeparture)) {
+                $arrSec = $this->timeToSec($currentArrival);
+                $depSec = $this->timeToSec($currentDeparture);
+                $waitProgress = $depSec > $arrSec
+                    ? ($nowSec - $arrSec) / ($depSec - $arrSec)
+                    : ($nowSec - $arrSec) / (($depSec + 86400) - $arrSec);
                 return [
                     'latitude' => (float) $current->station->latitude,
                     'longitude' => (float) $current->station->longitude,
@@ -122,7 +157,7 @@ class TrainTrackingService
                 ];
             }
 
-            if ($segmentStart && $segmentEnd && $now >= $segmentStart && $now <= $segmentEnd) {
+            if ($segmentStart && $segmentEnd && $this->isTimeInRange($nowSec, $segmentStart, $segmentEnd)) {
                 $progress = $this->calculateProgress($segmentStart, $segmentEnd, $now);
 
                 $latFrom = (float) $current->station->latitude;
@@ -142,7 +177,7 @@ class TrainTrackingService
         }
 
         $lastSchedule = $schedules->last();
-        if ($lastSchedule->arrival_time && $now >= $lastSchedule->arrival_time) {
+        if ($lastSchedule->arrival_time && $this->isTimeInRange($nowSec, $lastSchedule->arrival_time, $lastSchedule->arrival_time)) {
             return [
                 'latitude' => (float) $lastSchedule->station->latitude,
                 'longitude' => (float) $lastSchedule->station->longitude,
@@ -156,37 +191,51 @@ class TrainTrackingService
 
     private function calculateProgress(string $start, string $end, string $now): float
     {
-        $startSec = strtotime($start);
-        $endSec = strtotime($end);
-        $nowSec = strtotime($now);
+        $startSec = $this->timeToSec($start);
+        $endSec = $this->timeToSec($end);
+        $nowSec = $this->timeToSec($now);
 
-        if ($endSec === $startSec) {
+        if ($endSec <= $startSec) {
+            $endSec += 86400;
+        }
+        if ($nowSec < $startSec) {
+            $nowSec += 86400;
+        }
+
+        $total = $endSec - $startSec;
+        if ($total <= 0) {
             return 0;
         }
 
-        return ($nowSec - $startSec) / ($endSec - $startSec);
+        return ($nowSec - $startSec) / $total;
     }
 
     private function getNextStation($schedules, string $now): ?array
     {
+        $nowSec = $this->timeToSec($now);
         foreach ($schedules as $schedule) {
-            if ($schedule->arrival_time && $now < $schedule->arrival_time) {
-                return [
-                    'name' => $schedule->station->name,
-                    'arrival_time' => $schedule->arrival_time,
-                    'latitude' => (float) $schedule->station->latitude,
-                    'longitude' => (float) $schedule->station->longitude,
-                    'departure_time' => $schedule->departure_time,
-                ];
+            if ($schedule->arrival_time && !$this->isTimeInRange($nowSec, $schedule->arrival_time, $schedule->arrival_time)) {
+                if ($this->timeToSec($schedule->arrival_time) >= $nowSec) {
+                    return [
+                        'name' => $schedule->station->name,
+                        'arrival_time' => $schedule->arrival_time,
+                        'latitude' => (float) $schedule->station->latitude,
+                        'longitude' => (float) $schedule->station->longitude,
+                        'departure_time' => $schedule->departure_time,
+                    ];
+                }
             }
-            if (!$schedule->arrival_time && $schedule->departure_time && $now < $schedule->departure_time) {
-                return [
-                    'name' => $schedule->station->name,
-                    'arrival_time' => null,
-                    'latitude' => (float) $schedule->station->latitude,
-                    'longitude' => (float) $schedule->station->longitude,
-                    'departure_time' => $schedule->departure_time,
-                ];
+            if (!$schedule->arrival_time && $schedule->departure_time) {
+                $depSec = $this->timeToSec($schedule->departure_time);
+                if ($depSec >= $nowSec || abs($depSec - $nowSec) < 3600) {
+                    return [
+                        'name' => $schedule->station->name,
+                        'arrival_time' => null,
+                        'latitude' => (float) $schedule->station->latitude,
+                        'longitude' => (float) $schedule->station->longitude,
+                        'departure_time' => $schedule->departure_time,
+                    ];
+                }
             }
         }
         return null;
@@ -194,21 +243,30 @@ class TrainTrackingService
 
     private function getPrevStation($schedules, string $now): ?array
     {
+        $nowSec = $this->timeToSec($now);
         $prev = null;
         foreach ($schedules as $schedule) {
-            if ($schedule->arrival_time && $now < $schedule->arrival_time) {
-                return $prev;
+            if ($schedule->arrival_time) {
+                $arrSec = $this->timeToSec($schedule->arrival_time);
+                if ($arrSec > $nowSec && abs($arrSec - $nowSec) > 3600) {
+                    return $prev;
+                }
             }
-            if (!$schedule->arrival_time && $schedule->departure_time && $now < $schedule->departure_time) {
-                return $prev;
+            if ($schedule->departure_time) {
+                $depSec = $this->timeToSec($schedule->departure_time);
+                if (!$schedule->arrival_time && $depSec > $nowSec && abs($depSec - $nowSec) > 3600) {
+                    return $prev;
+                }
             }
-            $prev = [
-                'name' => $schedule->station->name,
-                'arrival_time' => $schedule->arrival_time,
-                'departure_time' => $schedule->departure_time,
-                'latitude' => (float) $schedule->station->latitude,
-                'longitude' => (float) $schedule->station->longitude,
-            ];
+            if ($schedule->arrival_time || $schedule->departure_time) {
+                $prev = [
+                    'name' => $schedule->station->name,
+                    'arrival_time' => $schedule->arrival_time,
+                    'departure_time' => $schedule->departure_time,
+                    'latitude' => (float) $schedule->station->latitude,
+                    'longitude' => (float) $schedule->station->longitude,
+                ];
+            }
         }
         return $prev;
     }
@@ -221,8 +279,13 @@ class TrainTrackingService
 
         $distance = $this->haversineDistance($latFrom, $lngFrom, $latTo, $lngTo);
 
-        $timeSec = abs(strtotime($arrival) - strtotime($departure));
-        if ($timeSec === 0) {
+        $depSec = $this->timeToSec($departure);
+        $arrSec = $this->timeToSec($arrival);
+        if ($arrSec <= $depSec) {
+            $arrSec += 86400;
+        }
+        $timeSec = $arrSec - $depSec;
+        if ($timeSec <= 0) {
             return rand(40, 90);
         }
 
