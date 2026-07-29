@@ -501,7 +501,7 @@ html, body {
 .train-marker-dot.stopped { background: #14b8a6; box-shadow: 0 0 10px rgba(20,184,166,0.6); }
 .train-marker-dot.approaching { background: #8b5cf6; box-shadow: 0 0 10px rgba(139,92,246,0.6); }
 .train-marker-dot.departing { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.6); }
-.train-marker-dot.completed { background: #475569; box-shadow: none; opacity: 0.6; }
+.train-marker-dot.completed { background: #64748b; box-shadow: 0 0 6px rgba(100,116,139,0.3); opacity: 0.85; }
 .train-marker-dot.retired {
     background: #475569;
     box-shadow: none;

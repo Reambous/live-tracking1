@@ -105,35 +105,40 @@ class TrainTrackingService
                     'next_arrival' => $nextStation ? $nextStation['arrival_time'] : null,
                     'path' => $pathCoords,
                 ];
-            } elseif ($nowSec < $firstDepSec) {
-                $firstStation = $schedules->first()->station;
-                $pathCoords = [];
-                foreach ($schedules as $s) {
-                    $lat = (float) $s->station->latitude;
-                    $lng = (float) $s->station->longitude;
-                    if ($lat != 0 || $lng != 0) {
-                        $pathCoords[] = [$lat, $lng];
-                    }
-                }
-
-                $resultTrains[] = [
-                    'id' => $train->id,
-                    'train_code' => $train->train_code,
-                    'name' => $train->name,
-                    'latitude' => (float) $firstStation->latitude,
-                    'longitude' => (float) $firstStation->longitude,
-                    'status' => 'idle',
-                    'progress' => 0,
-                    'speed' => 0,
-                    'gps_accuracy' => rand(85, 99),
-                    'route' => $route,
-                    'prev_station' => null,
-                    'next_station' => $schedules->first()->station->name,
-                    'next_arrival' => $firstDeparture,
-                    'path' => $pathCoords,
-                ];
             } else {
-                $lastStation = $schedules->last()->station;
+                $isOvernight = $firstDepSec > $lastArrSec;
+                $closerToArrival = abs($nowSec - $lastArrSec) < abs($nowSec - $firstDepSec);
+
+                if (!$isOvernight && $nowSec < $firstDepSec) {
+                    $station = $schedules->first()->station;
+                    $status = 'idle';
+                    $progress = 0;
+                    $prev = null;
+                    $nextName = $schedules->first()->station->name;
+                    $nextTime = $firstDeparture;
+                } elseif ($isOvernight && $closerToArrival) {
+                    $station = $schedules->last()->station;
+                    $status = 'completed';
+                    $progress = 100;
+                    $prev = null;
+                    $nextName = null;
+                    $nextTime = null;
+                } elseif ($isOvernight && !$closerToArrival) {
+                    $station = $schedules->first()->station;
+                    $status = 'idle';
+                    $progress = 0;
+                    $prev = null;
+                    $nextName = $schedules->first()->station->name;
+                    $nextTime = $firstDeparture;
+                } else {
+                    $station = $schedules->last()->station;
+                    $status = 'completed';
+                    $progress = 100;
+                    $prev = null;
+                    $nextName = null;
+                    $nextTime = null;
+                }
+
                 $pathCoords = [];
                 foreach ($schedules as $s) {
                     $lat = (float) $s->station->latitude;
@@ -147,16 +152,16 @@ class TrainTrackingService
                     'id' => $train->id,
                     'train_code' => $train->train_code,
                     'name' => $train->name,
-                    'latitude' => (float) $lastStation->latitude,
-                    'longitude' => (float) $lastStation->longitude,
-                    'status' => 'completed',
-                    'progress' => 100,
+                    'latitude' => (float) $station->latitude,
+                    'longitude' => (float) $station->longitude,
+                    'status' => $status,
+                    'progress' => $progress,
                     'speed' => 0,
                     'gps_accuracy' => rand(85, 99),
                     'route' => $route,
-                    'prev_station' => null,
-                    'next_station' => null,
-                    'next_arrival' => null,
+                    'prev_station' => $prev,
+                    'next_station' => $nextName,
+                    'next_arrival' => $nextTime,
                     'path' => $pathCoords,
                 ];
             }
