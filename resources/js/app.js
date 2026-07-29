@@ -324,7 +324,7 @@ function updateUI() {
 async function fetchActiveTrains() {
     try {
         const time = getSimulatedTime();
-        const url = `${API_URL}?time=${encodeURIComponent(time)}&speed=${speedMultiplier}`;
+        const url = `${API_URL}?time=${encodeURIComponent(time)}&speed=${speedMultiplier}&_t=${Date.now()}`;
         const response = await fetch(url);
         const result = await response.json();
 

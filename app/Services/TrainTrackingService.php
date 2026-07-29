@@ -69,14 +69,18 @@ class TrainTrackingService
                 $progress = $result['progress'] ?? 0;
                 $status = $result['status'] ?? 'departing';
 
-                $speed = $this->estimateSpeed(
-                    $prevStation ? $prevStation['latitude'] : null,
-                    $prevStation ? $prevStation['longitude'] : null,
-                    $nextStation ? $nextStation['latitude'] : null,
-                    $nextStation ? $nextStation['longitude'] : null,
-                    $prevStation ? $prevStation['departure_time'] : null,
-                    $nextStation ? $nextStation['arrival_time'] : null,
-                );
+                if ($status === 'stopped') {
+                    $speed = 0;
+                } else {
+                    $speed = $this->estimateSpeed(
+                        $prevStation ? $prevStation['latitude'] : null,
+                        $prevStation ? $prevStation['longitude'] : null,
+                        $nextStation ? $nextStation['latitude'] : null,
+                        $nextStation ? $nextStation['longitude'] : null,
+                        $prevStation ? $prevStation['departure_time'] : null,
+                        $nextStation ? $nextStation['arrival_time'] : null,
+                    );
+                }
 
                 $gpsAccuracy = rand(85, 99);
 
@@ -188,6 +192,16 @@ class TrainTrackingService
     {
         $schedules = $schedules->values();
         $nowSec = $this->timeToSec($now);
+
+        $first = $schedules->first();
+        if (!$first->arrival_time && $first->departure_time && $nowSec < $this->timeToSec($first->departure_time)) {
+            return [
+                'latitude' => (float) $first->station->latitude,
+                'longitude' => (float) $first->station->longitude,
+                'status' => 'stopped',
+                'progress' => 0,
+            ];
+        }
 
         for ($i = 0; $i < $schedules->count() - 1; $i++) {
             $current = $schedules[$i];
