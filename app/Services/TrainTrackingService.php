@@ -226,7 +226,7 @@ class TrainTrackingService
         }
 
         $lastSchedule = $schedules->last();
-        if ($lastSchedule->arrival_time && $this->isTimeInRange($nowSec, $lastSchedule->arrival_time, $lastSchedule->arrival_time)) {
+        if ($lastSchedule->arrival_time && $nowSec >= $this->timeToSec($lastSchedule->arrival_time)) {
             return [
                 'latitude' => (float) $lastSchedule->station->latitude,
                 'longitude' => (float) $lastSchedule->station->longitude,
