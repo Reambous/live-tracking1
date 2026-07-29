@@ -110,33 +110,29 @@ class TrainTrackingService
                 $closerToArrival = abs($nowSec - $lastArrSec) < abs($nowSec - $firstDepSec);
 
                 if (!$isOvernight && $nowSec < $firstDepSec) {
-                    $station = $schedules->first()->station;
                     $status = 'idle';
                     $progress = 0;
                     $prev = null;
                     $nextName = $schedules->first()->station->name;
                     $nextTime = $firstDeparture;
-                } elseif ($isOvernight && $closerToArrival) {
-                    $station = $schedules->last()->station;
-                    $status = 'completed';
-                    $progress = 100;
-                    $prev = null;
-                    $nextName = null;
-                    $nextTime = null;
+                    $pos = $this->calculatePosition($schedules, $firstDeparture);
+                    if (!$pos) { $pos = ['latitude' => (float) $schedules->first()->station->latitude, 'longitude' => (float) $schedules->first()->station->longitude]; }
                 } elseif ($isOvernight && !$closerToArrival) {
-                    $station = $schedules->first()->station;
                     $status = 'idle';
                     $progress = 0;
                     $prev = null;
                     $nextName = $schedules->first()->station->name;
                     $nextTime = $firstDeparture;
+                    $pos = $this->calculatePosition($schedules, $firstDeparture);
+                    if (!$pos) { $pos = ['latitude' => (float) $schedules->first()->station->latitude, 'longitude' => (float) $schedules->first()->station->longitude]; }
                 } else {
-                    $station = $schedules->last()->station;
                     $status = 'completed';
                     $progress = 100;
                     $prev = null;
                     $nextName = null;
                     $nextTime = null;
+                    $pos = $this->calculatePosition($schedules, $now);
+                    if (!$pos) { $pos = ['latitude' => (float) $schedules->last()->station->latitude, 'longitude' => (float) $schedules->last()->station->longitude]; }
                 }
 
                 $pathCoords = [];
@@ -152,8 +148,8 @@ class TrainTrackingService
                     'id' => $train->id,
                     'train_code' => $train->train_code,
                     'name' => $train->name,
-                    'latitude' => (float) $station->latitude,
-                    'longitude' => (float) $station->longitude,
+                    'latitude' => $pos['latitude'],
+                    'longitude' => $pos['longitude'],
                     'status' => $status,
                     'progress' => $progress,
                     'speed' => 0,
@@ -237,6 +233,27 @@ class TrainTrackingService
                 'longitude' => (float) $lastSchedule->station->longitude,
                 'status' => 'stopped',
                 'progress' => 1.0,
+            ];
+        }
+
+        $closest = null;
+        $closestDiff = PHP_INT_MAX;
+        foreach ($schedules as $s) {
+            if ($s->arrival_time) {
+                $diff = abs($nowSec - $this->timeToSec($s->arrival_time));
+                if ($diff < $closestDiff) { $closestDiff = $diff; $closest = $s; }
+            }
+            if ($s->departure_time) {
+                $diff = abs($nowSec - $this->timeToSec($s->departure_time));
+                if ($diff < $closestDiff) { $closestDiff = $diff; $closest = $s; }
+            }
+        }
+        if ($closest) {
+            return [
+                'latitude' => (float) $closest->station->latitude,
+                'longitude' => (float) $closest->station->longitude,
+                'status' => 'stopped',
+                'progress' => 0,
             ];
         }
 
