@@ -15,10 +15,12 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 
 let allTrains = [];
 let currentRoute = 'all';
+let searchQuery = '';
 let simulatedMinutes = 8 * 60;
 let speedMultiplier = 5;
 let simulationInterval = null;
 let isSliderDragging = false;
+let retiringMarkers = {};
 
 const trainMarkers = {};
 const trainPolylines = {};
@@ -29,6 +31,7 @@ const timeSlider = document.getElementById('timeSlider');
 const digitalClock = document.getElementById('digitalClock');
 const speedBtns = document.querySelectorAll('.speed-btn');
 const filterTabs = document.querySelectorAll('.filter-tab');
+const searchInput = document.getElementById('searchInput');
 const trainListContainer = document.getElementById('train-list-container');
 
 function formatMinutesToTime(minutes) {
@@ -83,10 +86,36 @@ const routeColors = {
     selatan: '#10b981',
 };
 
-function updateStats(trains) {
-    document.getElementById('statStopped').textContent = trains.filter(t => t.status === 'stopped').length;
-    document.getElementById('statApproaching').textContent = trains.filter(t => t.status === 'approaching').length;
-    document.getElementById('statDeparting').textContent = trains.filter(t => t.status === 'departing').length;
+function updateStatsAndCounts(trains) {
+    const stopped = trains.filter(t => t.status === 'stopped').length;
+    const approaching = trains.filter(t => t.status === 'approaching').length;
+    const departing = trains.filter(t => t.status === 'departing').length;
+    document.getElementById('statStopped').textContent = stopped;
+    document.getElementById('statApproaching').textContent = approaching;
+    document.getElementById('statDeparting').textContent = departing;
+
+    const all = allTrains.length;
+    const utara = allTrains.filter(t => t.route === 'utara').length;
+    const tengah = allTrains.filter(t => t.route === 'tengah').length;
+    const selatan = allTrains.filter(t => t.route === 'selatan').length;
+
+    document.getElementById('countAll').textContent = all > 0 ? `(${all})` : '';
+    document.getElementById('countUtara').textContent = utara > 0 ? `(${utara})` : '';
+    document.getElementById('countTengah').textContent = tengah > 0 ? `(${tengah})` : '';
+    document.getElementById('countSelatan').textContent = selatan > 0 ? `(${selatan})` : '';
+}
+
+function matchesSearch(train) {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return train.name.toLowerCase().includes(q) || train.train_code.toLowerCase().includes(q);
+}
+
+function getFilteredTrains() {
+    let result = allTrains;
+    if (currentRoute !== 'all') result = result.filter(t => t.route === currentRoute);
+    if (searchQuery) result = result.filter(matchesSearch);
+    return result;
 }
 
 function renderTrainCards(trains) {
@@ -102,8 +131,8 @@ function renderTrainCards(trains) {
             <div class="train-card" data-train-id="${train.id}">
                 <div class="train-card-header">
                     <div>
-                        <div class="train-card-name">${train.name}</div>
-                        <div class="train-card-code">${train.train_code}</div>
+                        <div class="train-card-name">${highlightMatch(train.name)}</div>
+                        <div class="train-card-code">${highlightMatch(train.train_code)}</div>
                     </div>
                     <div class="train-card-status">
                         <span class="status-dot ${train.status}"></span>
@@ -132,6 +161,13 @@ function renderTrainCards(trains) {
     trainListContainer.innerHTML = html;
 }
 
+function highlightMatch(text) {
+    if (!searchQuery || !text) return text || '';
+    const q = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${q})`, 'gi');
+    return text.replace(regex, '<mark style="background:#3b82f6;color:#fff;border-radius:2px;padding:0 2px;">$1</mark>');
+}
+
 function updateMapPolylines(trains) {
     const activeIds = new Set(trains.map(t => t.id));
 
@@ -144,7 +180,6 @@ function updateMapPolylines(trains) {
 
     for (const train of trains) {
         if (!train.path || train.path.length < 2) continue;
-
         if (trainPolylines[train.id]) {
             trainPolylines[train.id].setLatLngs(train.path);
         } else {
@@ -158,14 +193,30 @@ function updateMapPolylines(trains) {
     }
 }
 
+function retireMarker(id) {
+    const marker = trainMarkers[id];
+    if (!marker) return;
+
+    const el = marker.getElement();
+    if (el) el.classList.add('retiring');
+
+    const dot = el ? el.querySelector('.train-marker-dot') : null;
+    if (dot) dot.className = 'train-marker-dot retired';
+
+    retiringMarkers[id] = setTimeout(() => {
+        map.removeLayer(marker);
+        delete trainMarkers[id];
+        delete animState[id];
+        delete retiringMarkers[id];
+    }, 1000);
+}
+
 function updateMapMarkers(trains) {
     const activeIds = new Set(trains.map(t => t.id));
 
     for (const [id, marker] of Object.entries(trainMarkers)) {
-        if (!activeIds.has(Number(id))) {
-            map.removeLayer(marker);
-            delete trainMarkers[id];
-            delete animState[id];
+        if (!activeIds.has(Number(id)) && !retiringMarkers[id]) {
+            retireMarker(Number(id));
         }
     }
 
@@ -173,6 +224,11 @@ function updateMapMarkers(trains) {
     const animDuration = Math.min(fetchIntervalMs * 0.85, 4000);
 
     for (const train of trains) {
+        if (retiringMarkers[train.id]) {
+            clearTimeout(retiringMarkers[train.id]);
+            delete retiringMarkers[train.id];
+        }
+
         const popupContent = `
             <div style="font-family:Inter,sans-serif;">
                 <strong style="font-size:13px;">${train.name}</strong><br>
@@ -201,6 +257,9 @@ function updateMapMarkers(trains) {
             };
 
             marker.setPopupContent(popupContent);
+
+            const el = marker.getElement();
+            if (el) el.classList.remove('retiring');
 
             if (prevStatus !== train.status) {
                 marker.setIcon(getOrCreateIcon(train.status));
@@ -246,14 +305,9 @@ function animateMarkers(now) {
     if (hasActive) requestAnimationFrame(animateMarkers);
 }
 
-function getFilteredTrains() {
-    if (currentRoute === 'all') return allTrains;
-    return allTrains.filter(t => t.route === currentRoute);
-}
-
 function updateUI() {
     const filtered = getFilteredTrains();
-    updateStats(filtered);
+    updateStatsAndCounts(filtered);
     renderTrainCards(filtered);
     updateMapPolylines(filtered);
     updateMapMarkers(filtered);
@@ -279,7 +333,7 @@ async function fetchActiveTrains() {
 function startSimulation() {
     if (simulationInterval) clearInterval(simulationInterval);
 
-    const intervalMs = Math.max(200, Math.round(5000 / speedMultiplier));
+    const intervalMs = Math.max(300, Math.round(5000 / speedMultiplier));
 
     simulationInterval = setInterval(() => {
         if (!isSliderDragging) {
@@ -308,7 +362,7 @@ timeSlider.addEventListener('input', function () {
 timeSlider.addEventListener('change', function () {
     isSliderDragging = false;
     if (!simulationInterval) {
-        startSimulation();
+        document.querySelector('.speed-btn[data-speed="1"]').click();
     }
 });
 
@@ -329,6 +383,11 @@ filterTabs.forEach(tab => {
         currentRoute = this.dataset.route;
         updateUI();
     });
+});
+
+searchInput.addEventListener('input', function () {
+    searchQuery = this.value.trim();
+    updateUI();
 });
 
 trainListContainer.addEventListener('click', function (e) {

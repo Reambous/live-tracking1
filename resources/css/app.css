@@ -157,6 +157,44 @@ html, body {
     color: #fff;
 }
 
+.search-container {
+    padding: 6px 14px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.search-container input {
+    width: 100%;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.search-container input::placeholder {
+    color: #475569;
+}
+
+.search-container input:focus {
+    border-color: #3b82f6;
+}
+
+.tab-count {
+    font-weight: 400;
+    font-size: 10px;
+    color: #64748b;
+    margin-left: 2px;
+}
+
+.filter-tab.active .tab-count {
+    color: #94a3b8;
+}
+
 .filter-tabs {
     display: flex;
     gap: 4px;
@@ -435,6 +473,16 @@ html, body {
 .train-marker-dot.stopped { background: #14b8a6; box-shadow: 0 0 10px rgba(20,184,166,0.6); }
 .train-marker-dot.approaching { background: #8b5cf6; box-shadow: 0 0 10px rgba(139,92,246,0.6); }
 .train-marker-dot.departing { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.6); }
+.train-marker-dot.retired {
+    background: #475569;
+    box-shadow: none;
+    opacity: 0.3;
+    transition: opacity 0.8s ease;
+}
+.leaflet-marker-icon.retiring {
+    opacity: 0 !important;
+    transition: opacity 0.8s ease !important;
+}
 
 .leaflet-popup-content-wrapper {
     background: #1e293b !important;

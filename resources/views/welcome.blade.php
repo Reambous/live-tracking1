@@ -31,11 +31,15 @@
             </div>
         </div>
 
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Cari nama atau kode kereta..." autocomplete="off">
+        </div>
+
         <div class="filter-tabs">
-            <button class="filter-tab active" data-route="all">Semua</button>
-            <button class="filter-tab" data-route="utara">Utara</button>
-            <button class="filter-tab" data-route="tengah">Tengah</button>
-            <button class="filter-tab" data-route="selatan">Selatan</button>
+            <button class="filter-tab active" data-route="all">Semua <span class="tab-count" id="countAll"></span></button>
+            <button class="filter-tab" data-route="utara">Utara <span class="tab-count" id="countUtara"></span></button>
+            <button class="filter-tab" data-route="tengah">Tengah <span class="tab-count" id="countTengah"></span></button>
+            <button class="filter-tab" data-route="selatan">Selatan <span class="tab-count" id="countSelatan"></span></button>
         </div>
 
         <div class="stats-row">
