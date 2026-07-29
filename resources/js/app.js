@@ -20,7 +20,7 @@ let simulatedMinutes = 8 * 60;
 let speedMultiplier = 5;
 let simulationInterval = null;
 let isSliderDragging = false;
-let retiringMarkers = {};
+
 
 const trainMarkers = {};
 const trainPolylines = {};
@@ -70,7 +70,6 @@ function formatTime(timeStr) {
 
 const statusLabels = {
     idle: 'Menunggu',
-    stopping: 'Berhenti',
     stopped: 'Berhenti',
     approaching: 'Mendekati',
     departing: 'Lepas Stasiun',
@@ -90,21 +89,25 @@ const routeColors = {
 };
 
 function updateStatsAndCounts(trains) {
-    const idle = trains.filter(t => t.status === 'idle').length;
-    const stopped = trains.filter(t => t.status === 'stopped').length;
-    const approaching = trains.filter(t => t.status === 'approaching').length;
-    const departing = trains.filter(t => t.status === 'departing').length;
-    const completed = trains.filter(t => t.status === 'completed').length;
+    let idle = 0, stopped = 0, approaching = 0, departing = 0, completed = 0;
+    let utara = 0, tengah = 0, selatan = 0;
+    for (const t of trains) {
+        if (t.status === 'idle') idle++;
+        else if (t.status === 'stopped') stopped++;
+        else if (t.status === 'approaching') approaching++;
+        else if (t.status === 'departing') departing++;
+        else if (t.status === 'completed') completed++;
+    }
+    for (const t of allTrains) {
+        if (t.route === 'utara') utara++;
+        else if (t.route === 'tengah') tengah++;
+        else if (t.route === 'selatan') selatan++;
+    }
     document.getElementById('statIdle').textContent = idle;
     document.getElementById('statDeparting').textContent = departing;
     document.getElementById('statApproaching').textContent = approaching;
     document.getElementById('statStopped').textContent = stopped;
     document.getElementById('statCompleted').textContent = completed;
-
-    const all = allTrains.length;
-    const utara = allTrains.filter(t => t.route === 'utara').length;
-    const tengah = allTrains.filter(t => t.route === 'tengah').length;
-    const selatan = allTrains.filter(t => t.route === 'selatan').length;
 
     document.getElementById('countAll').textContent = all > 0 ? `(${all})` : '';
     document.getElementById('countUtara').textContent = utara > 0 ? `(${utara})` : '';
@@ -200,30 +203,14 @@ function updateMapPolylines(trains) {
     }
 }
 
-function retireMarker(id) {
-    const marker = trainMarkers[id];
-    if (!marker) return;
-
-    const el = marker.getElement();
-    if (el) el.classList.add('retiring');
-
-    const dot = el ? el.querySelector('.train-marker-dot') : null;
-    if (dot) dot.className = 'train-marker-dot retired';
-
-    retiringMarkers[id] = setTimeout(() => {
-        map.removeLayer(marker);
-        delete trainMarkers[id];
-        delete animState[id];
-        delete retiringMarkers[id];
-    }, 1000);
-}
-
 function updateMapMarkers(trains) {
     const activeIds = new Set(trains.map(t => t.id));
 
     for (const [id, marker] of Object.entries(trainMarkers)) {
-        if (!activeIds.has(Number(id)) && !retiringMarkers[id]) {
-            retireMarker(Number(id));
+        if (!activeIds.has(Number(id))) {
+            map.removeLayer(marker);
+            delete trainMarkers[id];
+            delete animState[id];
         }
     }
 
@@ -231,11 +218,6 @@ function updateMapMarkers(trains) {
     const animDuration = Math.min(fetchIntervalMs * 0.85, 4000);
 
     for (const train of trains) {
-        if (retiringMarkers[train.id]) {
-            clearTimeout(retiringMarkers[train.id]);
-            delete retiringMarkers[train.id];
-        }
-
         const popupContent = `
             <div style="font-family:Inter,sans-serif;">
                 <strong style="font-size:13px;">${train.name}</strong><br>

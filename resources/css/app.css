@@ -481,7 +481,7 @@ html, body {
 .legend-dot.stopped { background: #14b8a6; }
 .legend-dot.approaching { background: #8b5cf6; }
 .legend-dot.departing { background: #3b82f6; }
-.legend-dot.completed { background: #475569; opacity: 0.35; }
+.legend-dot.completed { background: #64748b; opacity: 0.85; }
 
 .train-marker-wrapper {
     background: none !important;
@@ -502,16 +502,6 @@ html, body {
 .train-marker-dot.approaching { background: #8b5cf6; box-shadow: 0 0 10px rgba(139,92,246,0.6); }
 .train-marker-dot.departing { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.6); }
 .train-marker-dot.completed { background: #64748b; box-shadow: 0 0 6px rgba(100,116,139,0.3); opacity: 0.85; }
-.train-marker-dot.retired {
-    background: #475569;
-    box-shadow: none;
-    opacity: 0.3;
-    transition: opacity 0.8s ease;
-}
-.leaflet-marker-icon.retiring {
-    opacity: 0 !important;
-    transition: opacity 0.8s ease !important;
-}
 
 .leaflet-popup-content-wrapper {
     background: #1e293b !important;
