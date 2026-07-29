@@ -261,12 +261,16 @@ html, body {
     font-weight: 500;
 }
 
+.stat-box.stat-idle .stat-value { color: #f59e0b; }
+.stat-box.stat-idle { border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.08); }
 .stat-box.stat-stopped .stat-value { color: #14b8a6; }
 .stat-box.stat-stopped { border-color: rgba(20, 184, 166, 0.3); background: rgba(20, 184, 166, 0.08); }
 .stat-box.stat-approaching .stat-value { color: #8b5cf6; }
 .stat-box.stat-approaching { border-color: rgba(139, 92, 246, 0.3); background: rgba(139, 92, 246, 0.08); }
 .stat-box.stat-departing .stat-value { color: #3b82f6; }
 .stat-box.stat-departing { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.08); }
+.stat-box.stat-completed .stat-value { color: #64748b; }
+.stat-box.stat-completed { border-color: rgba(100, 116, 139, 0.3); background: rgba(100, 116, 139, 0.08); }
 
 #train-list-container {
     flex: 1;
@@ -333,9 +337,11 @@ html, body {
     flex-shrink: 0;
 }
 
+.status-dot.idle { background: #f59e0b; }
 .status-dot.stopped { background: #14b8a6; }
 .status-dot.approaching { background: #8b5cf6; }
 .status-dot.departing { background: #3b82f6; }
+.status-dot.completed { background: #64748b; }
 
 .status-label {
     font-size: 10px;
@@ -343,9 +349,11 @@ html, body {
     text-transform: capitalize;
 }
 
+.status-label.idle { color: #f59e0b; }
 .status-label.stopped { color: #14b8a6; }
 .status-label.approaching { color: #8b5cf6; }
 .status-label.departing { color: #3b82f6; }
+.status-label.completed { color: #64748b; }
 
 .train-card-route {
     font-size: 10px;
@@ -452,9 +460,11 @@ html, body {
     flex-shrink: 0;
 }
 
+.legend-dot.idle { background: #f59e0b; opacity: 0.7; }
 .legend-dot.stopped { background: #14b8a6; }
 .legend-dot.approaching { background: #8b5cf6; }
 .legend-dot.departing { background: #3b82f6; }
+.legend-dot.completed { background: #475569; opacity: 0.35; }
 
 .train-marker-wrapper {
     background: none !important;
@@ -470,9 +480,11 @@ html, body {
     transition: all 0.3s ease;
 }
 
+.train-marker-dot.idle { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.3); opacity: 0.7; }
 .train-marker-dot.stopped { background: #14b8a6; box-shadow: 0 0 10px rgba(20,184,166,0.6); }
 .train-marker-dot.approaching { background: #8b5cf6; box-shadow: 0 0 10px rgba(139,92,246,0.6); }
 .train-marker-dot.departing { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.6); }
+.train-marker-dot.completed { background: #475569; box-shadow: none; opacity: 0.35; }
 .train-marker-dot.retired {
     background: #475569;
     box-shadow: none;

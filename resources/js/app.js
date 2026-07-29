@@ -69,9 +69,12 @@ function formatTime(timeStr) {
 }
 
 const statusLabels = {
+    idle: 'Menunggu',
+    stopping: 'Berhenti',
     stopped: 'Berhenti',
     approaching: 'Mendekati',
     departing: 'Lepas Stasiun',
+    completed: 'Selesai',
 };
 
 const routeLabels = {
@@ -87,12 +90,16 @@ const routeColors = {
 };
 
 function updateStatsAndCounts(trains) {
+    const idle = trains.filter(t => t.status === 'idle').length;
     const stopped = trains.filter(t => t.status === 'stopped').length;
     const approaching = trains.filter(t => t.status === 'approaching').length;
     const departing = trains.filter(t => t.status === 'departing').length;
-    document.getElementById('statStopped').textContent = stopped;
-    document.getElementById('statApproaching').textContent = approaching;
+    const completed = trains.filter(t => t.status === 'completed').length;
+    document.getElementById('statIdle').textContent = idle;
     document.getElementById('statDeparting').textContent = departing;
+    document.getElementById('statApproaching').textContent = approaching;
+    document.getElementById('statStopped').textContent = stopped;
+    document.getElementById('statCompleted').textContent = completed;
 
     const all = allTrains.length;
     const utara = allTrains.filter(t => t.route === 'utara').length;

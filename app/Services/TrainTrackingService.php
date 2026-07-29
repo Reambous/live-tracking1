@@ -38,7 +38,7 @@ class TrainTrackingService
         $nowSec = $this->timeToSec($now);
         $trains = Train::with(['schedules.station'])->get();
 
-        $activeTrains = [];
+        $resultTrains = [];
 
         foreach ($trains as $train) {
             $schedules = $train->schedules->sortBy('stop_order')->values();
@@ -54,61 +54,115 @@ class TrainTrackingService
                 continue;
             }
 
-            if (!$this->isTimeInRange($nowSec, $firstDeparture, $lastArrival)) {
-                continue;
-            }
-
-            $result = $this->calculatePosition($schedules, $now);
-            if ($result === null) {
-                continue;
-            }
-
-            $nextStation = $this->getNextStation($schedules, $now);
-            $prevStation = $this->getPrevStation($schedules, $now);
+            $firstDepSec = $this->timeToSec($firstDeparture);
+            $lastArrSec = $this->timeToSec($lastArrival);
             $route = $this->determineRoute($schedules);
 
-            $progress = $result['progress'] ?? 0;
-            $status = $result['status'] ?? 'departing';
-
-            $speed = $this->estimateSpeed(
-                $prevStation ? $prevStation['latitude'] : null,
-                $prevStation ? $prevStation['longitude'] : null,
-                $nextStation ? $nextStation['latitude'] : null,
-                $nextStation ? $nextStation['longitude'] : null,
-                $prevStation ? $prevStation['departure_time'] : null,
-                $nextStation ? $nextStation['arrival_time'] : null,
-            );
-
-            $gpsAccuracy = rand(85, 99);
-
-            $pathCoords = [];
-            foreach ($schedules as $s) {
-                $lat = (float) $s->station->latitude;
-                $lng = (float) $s->station->longitude;
-                if ($lat != 0 || $lng != 0) {
-                    $pathCoords[] = [$lat, $lng];
+            if ($this->isTimeInRange($nowSec, $firstDeparture, $lastArrival)) {
+                $result = $this->calculatePosition($schedules, $now);
+                if ($result === null) {
+                    continue;
                 }
-            }
 
-            $activeTrains[] = [
-                'id' => $train->id,
-                'train_code' => $train->train_code,
-                'name' => $train->name,
-                'latitude' => $result['latitude'],
-                'longitude' => $result['longitude'],
-                'status' => $status,
-                'progress' => round($progress * 100, 1),
-                'speed' => $speed,
-                'gps_accuracy' => $gpsAccuracy,
-                'route' => $route,
-                'prev_station' => $prevStation ? $prevStation['name'] : null,
-                'next_station' => $nextStation ? $nextStation['name'] : null,
-                'next_arrival' => $nextStation ? $nextStation['arrival_time'] : null,
-                'path' => $pathCoords,
-            ];
+                $nextStation = $this->getNextStation($schedules, $now);
+                $prevStation = $this->getPrevStation($schedules, $now);
+                $progress = $result['progress'] ?? 0;
+                $status = $result['status'] ?? 'departing';
+
+                $speed = $this->estimateSpeed(
+                    $prevStation ? $prevStation['latitude'] : null,
+                    $prevStation ? $prevStation['longitude'] : null,
+                    $nextStation ? $nextStation['latitude'] : null,
+                    $nextStation ? $nextStation['longitude'] : null,
+                    $prevStation ? $prevStation['departure_time'] : null,
+                    $nextStation ? $nextStation['arrival_time'] : null,
+                );
+
+                $gpsAccuracy = rand(85, 99);
+
+                $pathCoords = [];
+                foreach ($schedules as $s) {
+                    $lat = (float) $s->station->latitude;
+                    $lng = (float) $s->station->longitude;
+                    if ($lat != 0 || $lng != 0) {
+                        $pathCoords[] = [$lat, $lng];
+                    }
+                }
+
+                $resultTrains[] = [
+                    'id' => $train->id,
+                    'train_code' => $train->train_code,
+                    'name' => $train->name,
+                    'latitude' => $result['latitude'],
+                    'longitude' => $result['longitude'],
+                    'status' => $status,
+                    'progress' => round($progress * 100, 1),
+                    'speed' => $speed,
+                    'gps_accuracy' => $gpsAccuracy,
+                    'route' => $route,
+                    'prev_station' => $prevStation ? $prevStation['name'] : null,
+                    'next_station' => $nextStation ? $nextStation['name'] : null,
+                    'next_arrival' => $nextStation ? $nextStation['arrival_time'] : null,
+                    'path' => $pathCoords,
+                ];
+            } elseif ($nowSec < $firstDepSec) {
+                $firstStation = $schedules->first()->station;
+                $pathCoords = [];
+                foreach ($schedules as $s) {
+                    $lat = (float) $s->station->latitude;
+                    $lng = (float) $s->station->longitude;
+                    if ($lat != 0 || $lng != 0) {
+                        $pathCoords[] = [$lat, $lng];
+                    }
+                }
+
+                $resultTrains[] = [
+                    'id' => $train->id,
+                    'train_code' => $train->train_code,
+                    'name' => $train->name,
+                    'latitude' => (float) $firstStation->latitude,
+                    'longitude' => (float) $firstStation->longitude,
+                    'status' => 'idle',
+                    'progress' => 0,
+                    'speed' => 0,
+                    'gps_accuracy' => rand(85, 99),
+                    'route' => $route,
+                    'prev_station' => null,
+                    'next_station' => $schedules->first()->station->name,
+                    'next_arrival' => $firstDeparture,
+                    'path' => $pathCoords,
+                ];
+            } else {
+                $lastStation = $schedules->last()->station;
+                $pathCoords = [];
+                foreach ($schedules as $s) {
+                    $lat = (float) $s->station->latitude;
+                    $lng = (float) $s->station->longitude;
+                    if ($lat != 0 || $lng != 0) {
+                        $pathCoords[] = [$lat, $lng];
+                    }
+                }
+
+                $resultTrains[] = [
+                    'id' => $train->id,
+                    'train_code' => $train->train_code,
+                    'name' => $train->name,
+                    'latitude' => (float) $lastStation->latitude,
+                    'longitude' => (float) $lastStation->longitude,
+                    'status' => 'completed',
+                    'progress' => 100,
+                    'speed' => 0,
+                    'gps_accuracy' => rand(85, 99),
+                    'route' => $route,
+                    'prev_station' => null,
+                    'next_station' => null,
+                    'next_arrival' => null,
+                    'path' => $pathCoords,
+                ];
+            }
         }
 
-        return $activeTrains;
+        return $resultTrains;
     }
 
     private function timeToSec(string $time): int

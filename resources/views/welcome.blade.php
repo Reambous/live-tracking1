@@ -43,17 +43,25 @@
         </div>
 
         <div class="stats-row">
+            <div class="stat-box stat-idle">
+                <div class="stat-value" id="statIdle">0</div>
+                <div class="stat-label">Menunggu</div>
+            </div>
+            <div class="stat-box stat-departing">
+                <div class="stat-value" id="statDeparting">0</div>
+                <div class="stat-label">Berangkat</div>
+            </div>
+            <div class="stat-box stat-approaching">
+                <div class="stat-value" id="statApproaching">0</div>
+                <div class="stat-label">Mendekat</div>
+            </div>
             <div class="stat-box stat-stopped">
                 <div class="stat-value" id="statStopped">0</div>
                 <div class="stat-label">Berhenti</div>
             </div>
-            <div class="stat-box stat-approaching">
-                <div class="stat-value" id="statApproaching">0</div>
-                <div class="stat-label">Mendekati</div>
-            </div>
-            <div class="stat-box stat-departing">
-                <div class="stat-value" id="statDeparting">0</div>
-                <div class="stat-label">Lepas Stasiun</div>
+            <div class="stat-box stat-completed">
+                <div class="stat-value" id="statCompleted">0</div>
+                <div class="stat-label">Selesai</div>
             </div>
         </div>
 
@@ -64,9 +72,11 @@
 
     <div class="map-legend">
         <h4>Legenda</h4>
-        <div class="legend-item"><span class="legend-dot stopped"></span> Berhenti</div>
-        <div class="legend-item"><span class="legend-dot approaching"></span> Mendekati</div>
+        <div class="legend-item"><span class="legend-dot idle"></span> Menunggu</div>
         <div class="legend-item"><span class="legend-dot departing"></span> Lepas Stasiun</div>
+        <div class="legend-item"><span class="legend-dot approaching"></span> Mendekati</div>
+        <div class="legend-item"><span class="legend-dot stopped"></span> Berhenti</div>
+        <div class="legend-item"><span class="legend-dot completed"></span> Selesai</div>
     </div>
 
     <script>
