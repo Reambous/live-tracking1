@@ -18,10 +18,12 @@ let currentRoute = 'all';
 let simulatedMinutes = 8 * 60;
 let speedMultiplier = 5;
 let simulationInterval = null;
+let isSliderDragging = false;
 
 const trainMarkers = {};
 const trainPolylines = {};
 const animState = {};
+const iconCache = {};
 
 const timeSlider = document.getElementById('timeSlider');
 const digitalClock = document.getElementById('digitalClock');
@@ -45,15 +47,17 @@ function getSimulatedTime() {
     return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':00';
 }
 
-function createTrainIcon(status) {
-    const cls = status === 'stopped' ? 'stopped' : status === 'approaching' ? 'approaching' : 'departing';
-    return L.divIcon({
-        className: 'train-marker-wrapper',
-        html: `<div class="train-marker-dot ${cls}"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-        popupAnchor: [0, -10],
-    });
+function getOrCreateIcon(status) {
+    if (!iconCache[status]) {
+        iconCache[status] = L.divIcon({
+            className: 'train-marker-wrapper',
+            html: `<div class="train-marker-dot ${status}"></div>`,
+            iconSize: [14, 14],
+            iconAnchor: [7, 7],
+            popupAnchor: [0, -10],
+        });
+    }
+    return iconCache[status];
 }
 
 function formatTime(timeStr) {
@@ -80,30 +84,20 @@ const routeColors = {
 };
 
 function updateStats(trains) {
-    const stopped = trains.filter(t => t.status === 'stopped').length;
-    const approaching = trains.filter(t => t.status === 'approaching').length;
-    const departing = trains.filter(t => t.status === 'departing').length;
-    document.getElementById('statStopped').textContent = stopped;
-    document.getElementById('statApproaching').textContent = approaching;
-    document.getElementById('statDeparting').textContent = departing;
+    document.getElementById('statStopped').textContent = trains.filter(t => t.status === 'stopped').length;
+    document.getElementById('statApproaching').textContent = trains.filter(t => t.status === 'approaching').length;
+    document.getElementById('statDeparting').textContent = trains.filter(t => t.status === 'departing').length;
 }
 
 function renderTrainCards(trains) {
     if (trains.length === 0) {
-        trainListContainer.innerHTML = `
-            <div class="no-trains">
-                <div class="no-trains-icon">🚆</div>
-                Tidak ada kereta aktif
-            </div>
-        `;
+        trainListContainer.innerHTML = '<div class="no-trains"><div class="no-trains-icon">🚆</div>Tidak ada kereta aktif</div>';
         return;
     }
 
     let html = '';
     for (const train of trains) {
-        const statusCls = train.status;
         const routeCls = train.route || 'tengah';
-
         html += `
             <div class="train-card" data-train-id="${train.id}">
                 <div class="train-card-header">
@@ -112,8 +106,8 @@ function renderTrainCards(trains) {
                         <div class="train-card-code">${train.train_code}</div>
                     </div>
                     <div class="train-card-status">
-                        <span class="status-dot ${statusCls}"></span>
-                        <span class="status-label ${statusCls}">${statusLabels[train.status]}</span>
+                        <span class="status-dot ${train.status}"></span>
+                        <span class="status-label ${train.status}">${statusLabels[train.status]}</span>
                     </div>
                 </div>
                 <div class="train-card-route">
@@ -154,25 +148,14 @@ function updateMapPolylines(trains) {
         if (trainPolylines[train.id]) {
             trainPolylines[train.id].setLatLngs(train.path);
         } else {
-            const color = routeColors[train.route] || '#3b82f6';
-            const polyline = L.polyline(train.path, {
-                color: color,
+            trainPolylines[train.id] = L.polyline(train.path, {
+                color: routeColors[train.route] || '#3b82f6',
                 weight: 2,
                 opacity: 0.25,
-                dashArray: null,
                 smoothFactor: 1,
             }).addTo(map);
-            trainPolylines[train.id] = polyline;
         }
     }
-}
-
-function getTrainHeading(lat1, lng1, lat2, lng2) {
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
-    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
-    return Math.atan2(y, x) * 180 / Math.PI;
 }
 
 function updateMapMarkers(trains) {
@@ -186,9 +169,10 @@ function updateMapMarkers(trains) {
         }
     }
 
-    for (const train of trains) {
-        const statusCls = train.status;
+    const fetchIntervalMs = Math.max(200, Math.round(5000 / speedMultiplier));
+    const animDuration = Math.min(fetchIntervalMs * 0.85, 4000);
 
+    for (const train of trains) {
         const popupContent = `
             <div style="font-family:Inter,sans-serif;">
                 <strong style="font-size:13px;">${train.name}</strong><br>
@@ -207,27 +191,32 @@ function updateMapMarkers(trains) {
 
         if (trainMarkers[train.id]) {
             const marker = trainMarkers[train.id];
+            const prevStatus = marker._trainStatus;
 
             animState[train.id] = {
                 from: marker.getLatLng(),
                 to: L.latLng(train.latitude, train.longitude),
                 startTime: performance.now(),
-                duration: 4000,
+                duration: animDuration,
             };
 
             marker.setPopupContent(popupContent);
-            marker.setIcon(createTrainIcon(train.status));
+
+            if (prevStatus !== train.status) {
+                marker.setIcon(getOrCreateIcon(train.status));
+                marker._trainStatus = train.status;
+            }
         } else {
-            const marker = L.marker([train.latitude, train.longitude], {
-                icon: createTrainIcon(train.status),
-            }).addTo(map);
+            const icon = getOrCreateIcon(train.status);
+            const marker = L.marker([train.latitude, train.longitude], { icon }).addTo(map);
             marker.bindPopup(popupContent);
+            marker._trainStatus = train.status;
 
             animState[train.id] = {
                 from: L.latLng(train.latitude, train.longitude),
                 to: L.latLng(train.latitude, train.longitude),
                 startTime: performance.now(),
-                duration: 4000,
+                duration: animDuration,
             };
 
             trainMarkers[train.id] = marker;
@@ -240,29 +229,21 @@ function animateMarkers(now) {
 
     for (const [id, state] of Object.entries(animState)) {
         const marker = trainMarkers[id];
-        if (!marker) {
-            delete animState[id];
-            continue;
-        }
+        if (!marker) { delete animState[id]; continue; }
 
         const elapsed = now - state.startTime;
         const t = Math.min(elapsed / state.duration, 1);
-
         const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
-        const lat = state.from.lat + (state.to.lat - state.from.lat) * ease;
-        const lng = state.from.lng + (state.to.lng - state.from.lng) * ease;
+        marker.setLatLng([
+            state.from.lat + (state.to.lat - state.from.lat) * ease,
+            state.from.lng + (state.to.lng - state.from.lng) * ease,
+        ]);
 
-        marker.setLatLng([lat, lng]);
-
-        if (t < 1) {
-            hasActive = true;
-        }
+        if (t < 1) hasActive = true;
     }
 
-    if (hasActive) {
-        requestAnimationFrame(animateMarkers);
-    }
+    if (hasActive) requestAnimationFrame(animateMarkers);
 }
 
 function getFilteredTrains() {
@@ -301,10 +282,12 @@ function startSimulation() {
     const intervalMs = Math.max(200, Math.round(5000 / speedMultiplier));
 
     simulationInterval = setInterval(() => {
-        simulatedMinutes = (simulatedMinutes + 1) % 1440;
-        updateClock();
-        timeSlider.value = simulatedMinutes;
-        fetchActiveTrains();
+        if (!isSliderDragging) {
+            simulatedMinutes = (simulatedMinutes + 1) % 1440;
+            updateClock();
+            timeSlider.value = simulatedMinutes;
+            fetchActiveTrains();
+        }
     }, intervalMs);
 }
 
@@ -316,9 +299,17 @@ function stopSimulation() {
 }
 
 timeSlider.addEventListener('input', function () {
+    isSliderDragging = true;
     simulatedMinutes = parseInt(this.value);
     updateClock();
     fetchActiveTrains();
+});
+
+timeSlider.addEventListener('change', function () {
+    isSliderDragging = false;
+    if (!simulationInterval) {
+        startSimulation();
+    }
 });
 
 speedBtns.forEach(btn => {
@@ -326,6 +317,7 @@ speedBtns.forEach(btn => {
         speedBtns.forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         speedMultiplier = parseInt(this.dataset.speed);
+        isSliderDragging = false;
         startSimulation();
     });
 });
